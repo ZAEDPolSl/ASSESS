@@ -1,0 +1,2 @@
+Age	Tsize	Tgrade	Pnodes	HR	HER2
+51	30	3	1	N	P
