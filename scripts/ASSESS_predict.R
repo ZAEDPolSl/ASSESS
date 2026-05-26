@@ -9,7 +9,14 @@ ASSESS_predict <- function(Age, Tsize, Tgrade, Pnodes, HR, HER2, endpoint, mdl_a
 # HER2 - HER2 status (P or N)
 # endpoint - survival endpoint ("OS" - overall survival or "BCSS" - breast cancer specific survival)
 #
-
+# Example:
+# Age <- 25
+# Tsize <- 30
+# Tgrade <- 3
+# Pnodes <- 0
+# HR <- "P"
+# HER2 <- "N"
+  
   require(fastcmprsk)
 
   # define model features
@@ -69,6 +76,19 @@ ASSESS_predict <- function(Age, Tsize, Tgrade, Pnodes, HR, HER2, endpoint, mdl_a
   pred_BC <- predict(mdl[[setdiff(1:2,grep('non', names(mdl)))]], data, getBootstrapVariance=F, tL=1)
   pred_nonBC <- predict(mdl[[grep('non', names(mdl))]], data, getBootstrapVariance=F, tL=1)
   
+  # # calculate 3- and 5-years incidence
+  # res_BC <- spline(pred_BC$ftime, pred_BC$CIF, xout=c(36,60))$y
+  # res_nonBC <- spline(pred_nonBC$ftime, pred_nonBC$CIF, xout=c(36,60))$y
+  # colnames(res_BC) <- colnames(res_nonBC) <- c("3y","5y")
+  # 
+  # # calculate survival curves + 3- and 5-year survival (for OS and BCSS)
+  # Surv_final["OS3"] <- 1 - (res_B[,"3y"] + res_nonBC[,"3y"])
+  # Surv_final["OS5"] <- 1 - (res_BC[,"5y"] + res_nonBC[,"5y"])
+  # Surv_final["BCSS3"] <- 1 - res_BC[,"3y"]
+  # Surv_final["BCSS5"] <- 1 - res_BC[,"5y"]
+  # Surv_final[Surv_final < 0] <- 0
+  # Surv_final[Surv_final > 1] <- 1
+
   Pred_final <- data.frame(1:max_time)
   colnames(Pred_final) <- "Time"
   
@@ -92,6 +112,7 @@ ASSESS_predict <- function(Age, Tsize, Tgrade, Pnodes, HR, HER2, endpoint, mdl_a
       HR <- HR_pool_all$DFS[,subtype]
     }
     un_grp <- names(HR)
+    un_grp <- un_grp[!un_grp %in% c("PRE", "POST")]
     
     for (a in 1:length(un_grp)){
       tmp <- Pred_final[,2] ^ HR[un_grp[a]]
@@ -99,6 +120,25 @@ ASSESS_predict <- function(Age, Tsize, Tgrade, Pnodes, HR, HER2, endpoint, mdl_a
       tmp[tmp > 1] <- 1
       Pred_final[,paste0(endpoint,"_",un_grp[a])] <- tmp
     }
+    
+    # Add additional endocrine therapy effect on top of chemotherapy
+    # PRE - OFS; POST - AI
+    ind <- (rownames(HR_pool_all$OS) %in% c("PRE","POST"))
+    if (endpoint == 'OS') {
+      HR <- HR_pool_all$OS[ind,subtype]
+    } else if (endpoint == 'BCSS') {
+      HR <- HR_pool_all$DFS[ind,subtype]
+    }
+    un_grp2 <- names(HR)
+    for (a in 1:length(un_grp)){
+      for (b in 1:length(un_grp2)){
+        tmp <- Pred_final[,paste0(endpoint,"_",un_grp[a])] ^ HR[un_grp2[b]]
+        tmp[tmp < 0] <- 0
+        tmp[tmp > 1] <- 1
+        Pred_final[,paste0(endpoint,"_",un_grp[a],"+",un_grp2[b])] <- tmp
+      }
+    }
+    
     
     # res <- list()
     # res$Curves <- Pred_final
